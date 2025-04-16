@@ -13,4 +13,4 @@ You can customize Icon and text to your liking.
 
 
 # Preview
-![image](https://github.com/user-attachments/assets/c839608e-8554-4d63-8ef4-a66ed095922d)
+![ezgif-37c47df5b2b614](https://github.com/user-attachments/assets/287d9018-7edd-4b7b-afc4-df49a136a936)
