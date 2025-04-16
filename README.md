@@ -8,7 +8,8 @@ You can customize Icon and text to your liking.
 
 
 # Preview
-https://github.com/user-attachments/assets/d597bc26-19a0-4c77-9acb-0acacb3ffdb0
+![image](https://github.com/user-attachments/assets/c839608e-8554-4d63-8ef4-a66ed095922d)
+
 
 
 
