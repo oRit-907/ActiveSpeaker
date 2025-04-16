@@ -1,6 +1,6 @@
-# ActiveSpeaker
+# ActiveSpeaker :microphone:
 
-**Active Speaker** :microphone:
+**Active Speaker**
 This will add a Visual display using [pma-voice](https://github.com/AvarianKnight/pma-voice) that shows above players head to allow others see who is talking/talking.
 
 It has pulsing animation when speaking/talking.
