@@ -7,6 +7,7 @@ It has pulsing animation when speaking/talking.
 You can customize Icon and text to your liking.
 
 
+# Preview
 https://github.com/user-attachments/assets/d597bc26-19a0-4c77-9acb-0acacb3ffdb0
 
 
