@@ -6,5 +6,9 @@ description 'A simple script to show who is currently talking for PMA-Voice.'
 version '1.0.0'
 
 client_script "client.lua"
+server_script "server.lua"
 
---Love you guys.
+-- Optional MySQL dependency
+-- dependency 'mysql-async'
+-- or
+-- dependency 'oxmysql'
