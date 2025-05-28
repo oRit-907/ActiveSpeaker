@@ -4,7 +4,7 @@ This will add a Visual display using pma-voice that shows above players head to 
 
 It has pulsing animation when speaking/talking.
 
-You can customize Icon and text to your liking.
+You can customize Icon and text to your liking using the client.lua file.
 
 |                             |                    |
 |-----------------------------|--------------------|
