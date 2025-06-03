@@ -16,5 +16,5 @@ Buy the latest version on [Active Speaker](https://store.ragecity.online/package
 
 
 # Preview
+![image](https://github.com/user-attachments/assets/0623f595-2894-4e16-8fed-3c56ca80a66a)
 
-![1c09da08-3758-40bc-bb38-70433f6478e5](https://github.com/user-attachments/assets/a6f7e155-cdb9-4e5c-916d-dd9d04d3d5ac)
