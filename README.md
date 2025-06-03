@@ -11,7 +11,7 @@ Buy the latest version on [Active Speaker](https://store.ragecity.online/package
 |                             |                    |
 |-----------------------------|--------------------|
 | dependencies | [pma-voice](https://github.com/AvarianKnight/pma-voice)       |
-| Version | 1.0.2       |
+| Latest Version | 1.0.2       |
 
 
 
