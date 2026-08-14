@@ -21,16 +21,30 @@ local Config = {
 
     -- Applied to the name before it is sent to clients. %s is the player name.
     nameFormat = '%s',
+
+    -- Only used for the startup warning below. Change it if your server runs a
+    -- renamed copy of pma-voice.
+    voiceResource = 'pma-voice',
 }
 
 local tags = {}
 
+-- Nothing is replicated that the config has turned off, so a server running
+-- with names and tags disabled sends no player data at all.
 local function playerData(source)
-    return {
-        name = Config.nameFormat:format(GetPlayerName(source) or 'Unknown'),
-        tag = tags[source] and tags[source].text or nil,
-        color = tags[source] and tags[source].color or nil,
-    }
+    local tag = tags[source]
+    local data = {}
+
+    if Config.showNames then
+        data.name = Config.nameFormat:format(GetPlayerName(source) or 'Unknown')
+    end
+
+    if Config.showTags and tag then
+        data.tag = tag.text
+        data.color = tag.color
+    end
+
+    return (data.name or data.tag) and data or nil
 end
 
 local function refresh(source)
@@ -94,4 +108,14 @@ AddEventHandler('onResourceStart', function(resource)
     for _, id in ipairs(GetPlayers()) do
         refresh(tonumber(id))
     end
+
+    -- Warn instead of refusing to start, so servers running a renamed voice
+    -- resource are not blocked. Delayed because the voice resource may still be
+    -- starting alongside this one.
+    SetTimeout(5000, function()
+        if GetResourceState(Config.voiceResource) ~= 'started' then
+            print(('[ActiveSpeaker] %s is not running, so nothing will be drawn. Update Config.voiceResource in server.lua if your voice resource is named differently.')
+                :format(Config.voiceResource))
+        end
+    end)
 end)

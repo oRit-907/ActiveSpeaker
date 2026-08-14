@@ -9,4 +9,5 @@ version '1.0.2'
 client_script 'client.lua'
 server_script 'server.lua'
 
-dependency 'pma-voice'
+-- pma-voice is required, but it is checked at runtime in server.lua rather than
+-- declared here, so servers running a renamed copy of it still start.

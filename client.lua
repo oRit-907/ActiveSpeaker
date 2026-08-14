@@ -76,8 +76,29 @@ local serverConfig = {
     showTags = false,
 }
 
+-- server.lua replicates its Config through GlobalState. The change handler
+-- covers later edits, the thread covers the resource starting before the value
+-- has made it to us.
+AddStateBagChangeHandler('activeSpeaker', 'global', function(_, _, value)
+    if type(value) == 'table' then
+        serverConfig = value
+    end
+end)
+
+CreateThread(function()
+    for _ = 1, 10 do
+        if type(GlobalState.activeSpeaker) == 'table' then
+            serverConfig = GlobalState.activeSpeaker
+            return
+        end
+
+        Wait(500)
+    end
+end)
+
 local nearby = {}
 local dictLoaded = false
+local debugMode = false
 
 local function loadTextureDict()
     if dictLoaded or Config.display == 'text' then
@@ -93,6 +114,10 @@ local function loadTextureDict()
 end
 
 local function isTalking(serverId, playerIdx)
+    if debugMode and playerIdx == PlayerId() then
+        return true
+    end
+
     local state = Player(serverId).state
 
     if state and state.talking ~= nil then
@@ -214,17 +239,14 @@ local function drawIndicator(ped, serverId, distance, onRadio)
 end
 
 CreateThread(function()
-    local myPlayer = PlayerId()
-
     while true do
         local ped = PlayerPedId()
         local origin = GetEntityCoords(ped)
+        local myPlayer = PlayerId()
         local found = {}
 
-        serverConfig = GlobalState.activeSpeaker or serverConfig
-
         for _, playerIdx in ipairs(GetActivePlayers()) do
-            if playerIdx ~= myPlayer or Config.showSelf then
+            if playerIdx ~= myPlayer or Config.showSelf or debugMode then
                 local targetPed = GetPlayerPed(playerIdx)
 
                 if DoesEntityExist(targetPed) then
@@ -275,6 +297,15 @@ CreateThread(function()
         end
     end
 end)
+
+-- Forces the indicator above your own head so the placement and size can be
+-- tuned without a second player. Takes effect within one scanInterval.
+RegisterCommand('activespeaker', function()
+    debugMode = not debugMode
+
+    print(('[ActiveSpeaker] debug %s. heightOffset = %.2f, icon.size = %.3f, text.size = %.2f')
+        :format(debugMode and 'on' or 'off', Config.heightOffset, Config.icon.size, Config.text.size))
+end, false)
 
 AddEventHandler('onResourceStop', function(resource)
     if resource == GetCurrentResourceName() and dictLoaded then

@@ -19,6 +19,15 @@ Buy the latest version of [Active Speaker](https://store.ragecity.online/package
 2. Add `ensure ActiveSpeaker` to your `server.cfg`, after `pma-voice`.
 3. Restart the server.
 
+pma-voice is not declared as a hard dependency, so servers running a renamed
+copy of it still start. If it is missing you get a console warning instead, and
+nothing is drawn. Point `Config.voiceResource` in `server.lua` at your own copy
+to silence it.
+
+Type `/activespeaker` in game to force the indicator above your own head. Handy
+for tuning `heightOffset` and `icon.size` without a second player, and it prints
+the current values to the F8 console.
+
 # Configuration
 
 Every option lives in the `Config` table at the top of `client.lua`:
@@ -53,9 +62,12 @@ on server side, so they keep showing even with `display = 'icon'`.
 | `showServerIds` | Append the server id, e.g. `John Doe [12]`. |
 | `showTags` | Draw tags set through the exports below. |
 | `nameFormat` | Applied to the name before sending, `%s` is the player name. |
+| `voiceResource` | Name of your voice resource, only used for the startup warning. |
 
 Values are replicated with state bags, so players that join late or come back
-into scope always get the current data.
+into scope always get the current data. Anything turned off here is never sent,
+so a server with `showNames` and `showTags` off replicates no player data at
+all.
 
 ## Exports
 
