@@ -37,6 +37,7 @@ Every option lives in the `Config` table at the top of `client.lua`:
 | `showSelf` | Also draw the indicator above your own head (handy for testing). |
 | `maxDistance` | Draw distance in metres. The indicator fades out over the last quarter. |
 | `requireLineOfSight` | Hide the indicator when the player is behind cover. |
+| `hideInvisible` | Hide it for players the game is not rendering, so invisible admins are not given away. |
 | `heightOffset` | How far above the head bone the indicator sits. |
 | `display` | `'icon'`, `'text'` or `'both'`. |
 | `icon` | Texture dictionary, frames, frame time, size and colour of the icon. |
@@ -62,7 +63,13 @@ on server side, so they keep showing even with `display = 'icon'`.
 | `showServerIds` | Append the server id, e.g. `John Doe [12]`. |
 | `showTags` | Draw tags set through the exports below. |
 | `nameFormat` | Applied to the name before sending, `%s` is the player name. |
+| `maxLength` | Names and tags longer than this are cut short. |
 | `voiceResource` | Name of your voice resource, only used for the startup warning. |
+
+Player names are stripped of text codes before they are sent, so nobody can
+colour their own name or push extra lines above their head by renaming
+themselves. `nameFormat` is not stripped, so codes like `~b~` still work there
+if you want to colour the whole line.
 
 Values are replicated with state bags, so players that join late or come back
 into scope always get the current data. Anything turned off here is never sent,

@@ -16,6 +16,10 @@ local Config = {
     -- Hide the indicator when the player is behind a wall / out of sight.
     requireLineOfSight = false,
 
+    -- Hide the indicator for players the game is not rendering, so admins in
+    -- noclip or with an invisible ped are not given away by it.
+    hideInvisible = true,
+
     -- How far above the head bone the indicator sits, in metres.
     heightOffset = 0.35,
 
@@ -199,11 +203,15 @@ local function drawIndicator(ped, serverId, distance, onRadio)
     end
 
     -- Keep the indicator roughly the same physical size regardless of distance
-    -- and of how far the player has zoomed in.
-    local scale = math.min(1.5, math.max(0.3, (1.0 / distance) * (70.0 / GetGameplayCamFov()) * 2.0))
+    -- and of how far the player has zoomed in. Measured from the camera rather
+    -- than from your ped, because that is what the projection above uses - in
+    -- third person the camera sits several metres further back.
+    local camDistance = math.max(0.1, #(GetGameplayCamCoord() - coords))
+    local scale = math.min(1.5, math.max(0.3, (1.0 / camDistance) * (70.0 / GetGameplayCamFov()) * 2.0))
     local alpha = 255
 
-    -- Fade out over the last quarter of the draw distance.
+    -- Fade out over the last quarter of the draw distance. This one stays on the
+    -- distance from your ped so it lines up with where maxDistance culls.
     local fadeStart = Config.maxDistance * 0.75
     if distance > fadeStart then
         alpha = math.floor(255 * (1.0 - (distance - fadeStart) / (Config.maxDistance - fadeStart)))
@@ -252,9 +260,12 @@ CreateThread(function()
                 if DoesEntityExist(targetPed) then
                     local distance = #(origin - GetEntityCoords(targetPed))
 
+                    -- Only the player index is kept. Ped handles are replaced on
+                    -- respawn and model change, and the engine reuses them, so a
+                    -- handle cached for a whole scanInterval can end up pointing
+                    -- at something else entirely.
                     if distance <= Config.maxDistance then
                         found[#found + 1] = {
-                            ped = targetPed,
                             playerIdx = playerIdx,
                             serverId = GetPlayerServerId(playerIdx),
                         }
@@ -274,7 +285,7 @@ CreateThread(function()
     while true do
         local count = #nearby
 
-        if count == 0 then
+        if count == 0 or IsPauseMenuActive() then
             Wait(250)
         else
             local ped = PlayerPedId()
@@ -282,13 +293,16 @@ CreateThread(function()
 
             for i = 1, count do
                 local player = nearby[i]
+                local targetPed = GetPlayerPed(player.playerIdx)
 
-                if DoesEntityExist(player.ped) and isTalking(player.serverId, player.playerIdx) then
-                    local distance = #(origin - GetEntityCoords(player.ped))
+                if targetPed ~= 0 and DoesEntityExist(targetPed)
+                    and (not Config.hideInvisible or IsEntityVisible(targetPed))
+                    and isTalking(player.serverId, player.playerIdx) then
+                    local distance = #(origin - GetEntityCoords(targetPed))
 
                     if distance <= Config.maxDistance
-                        and (not Config.requireLineOfSight or HasEntityClearLosToEntity(ped, player.ped, 17)) then
-                        drawIndicator(player.ped, player.serverId, distance, isOnRadio(player.serverId))
+                        and (not Config.requireLineOfSight or HasEntityClearLosToEntity(ped, targetPed, 17)) then
+                        drawIndicator(targetPed, player.serverId, distance, isOnRadio(player.serverId))
                     end
                 end
             end

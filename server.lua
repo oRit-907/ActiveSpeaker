@@ -20,7 +20,13 @@ local Config = {
     showTags = true,
 
     -- Applied to the name before it is sent to clients. %s is the player name.
+    -- Unlike the name itself this is trusted, so text codes such as ~b~ work
+    -- here if you want the whole line coloured.
     nameFormat = '%s',
+
+    -- Names and tags longer than this are cut short, so nobody can push the
+    -- lines below them off screen.
+    maxLength = 32,
 
     -- Only used for the startup warning below. Change it if your server runs a
     -- renamed copy of pma-voice.
@@ -29,6 +35,22 @@ local Config = {
 
 local tags = {}
 
+-- The client draws these through AddTextComponentString, which reads ~ as a
+-- text code: a player called "~n~~r~ADMIN" would otherwise get a red second
+-- line above their head on everyone's screen. Control characters go with it.
+local function sanitize(text)
+    -- Whole codes first, so "~r~ADMIN" becomes "ADMIN" and not "rADMIN", then
+    -- anything left over.
+    text = tostring(text):gsub('~[%w_]-~', '')
+    text = text:gsub('[~%c]', '')
+
+    if #text > Config.maxLength then
+        text = text:sub(1, Config.maxLength) .. '...'
+    end
+
+    return text
+end
+
 -- Nothing is replicated that the config has turned off, so a server running
 -- with names and tags disabled sends no player data at all.
 local function playerData(source)
@@ -36,11 +58,11 @@ local function playerData(source)
     local data = {}
 
     if Config.showNames then
-        data.name = Config.nameFormat:format(GetPlayerName(source) or 'Unknown')
+        data.name = Config.nameFormat:format(sanitize(GetPlayerName(source) or 'Unknown'))
     end
 
     if Config.showTags and tag then
-        data.tag = tag.text
+        data.tag = sanitize(tag.text)
         data.color = tag.color
     end
 
