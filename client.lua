@@ -1,228 +1,163 @@
---[[
-    Active Speaker
-    Draws a pulsing speaker icon above the head of every nearby player that is
-    currently talking through pma-voice.
-
-    Everything you are meant to touch lives in the Config table below.
-]]
-
 local Config = {
-    -- Draw the indicator above your own head as well (useful while testing).
-    showSelf = false,
+    NameRefreshInterval = 60000, -- milliseconds
+    EnableStealthMode = true,
+    ShowNames = true,
 
-    -- Players further away than this (in metres) are never drawn.
-    maxDistance = 20.0,
+    -- Draw the label above your own head too. Off by default, you already know
+    -- when you are talking.
+    ShowSelf = false,
 
-    -- Hide the indicator when the player is behind a wall / out of sight.
-    requireLineOfSight = false,
+    -- Players further away than this are skipped. The label fades out over the
+    -- last quarter of it.
+    MaxDistance = 20.0,
 
-    -- How far above the head bone the indicator sits, in metres.
-    heightOffset = 0.35,
+    -- How far above the players origin the label sits.
+    HeightOffset = 1.15,
 
-    -- How often (ms) we rebuild the list of nearby players.
-    scanInterval = 500,
+    -- The GTA text font has no emoji, so keep this plain text.
+    Label = "Speaking...",
+    Color = { 255, 255, 255, 230 },
 
-    -- 'icon', 'text' or 'both'.
-    display = 'icon',
+    -- How much the label grows at the peak of the pulse, and how long (ms) a
+    -- pulse takes. Set PulseAmount to 0 for no animation.
+    PulseAmount = 0.15,
+    PulseSpeed = 200,
 
-    icon = {
-        dict = 'mpleaderboard',
-        -- Frames are cycled to fake the classic GTA:O volume bars. Use a single
-        -- entry if you only want one static icon.
-        frames = { 'leaderboard_audio_1', 'leaderboard_audio_2', 'leaderboard_audio_3' },
-        frameTime = 120,
-        size = 0.055,
-        color = { 255, 255, 255 },
-    },
+    -- Shown instead of the two above while the player talks on the radio.
+    ShowRadio = true,
+    RadioLabel = "Radio",
+    RadioColor = { 90, 200, 255, 230 },
 
-    text = {
-        label = 'Speaking',
-        font = 4,
-        size = 0.5,
-        color = { 255, 255, 255 },
-        -- Vertical gap between the icon and the label, in screen units.
-        gap = 0.018,
-    },
-
-    -- Shown instead of the values above while the player talks on the radio.
-    radio = {
-        enabled = true,
-        label = 'Radio',
-        color = { 90, 200, 255 },
-    },
-
-    pulse = {
-        enabled = true,
-        -- Lower is faster. Time (ms) of a full pulse cycle.
-        speed = 700.0,
-        -- How much the indicator grows at the peak of the pulse (0.25 = +25%).
-        scale = 0.25,
-        -- How much the indicator fades at the trough of the pulse.
-        alpha = 0.35,
-    },
+    -- Small speaker icon above the label.
+    ShowIcon = true,
+    Icon = {
+        dict = "mpleaderboard",
+        texture = "leaderboard_audio_3",
+        size = 0.06
+    }
 }
 
-local SKEL_HEAD = 31086
+local playerNames = {}
+local iconReady = false
 
-local nearby = {}
-local dictLoaded = false
+function DrawText3DAnimated(x, y, z, text, color, fade)
+    local onScreen, _x, _y = World3dToScreen2d(x, y, z)
+    if not onScreen then return end
 
-local function loadTextureDict()
-    if dictLoaded or Config.display == 'text' then
-        return
+    local p = GetGameplayCamCoord()
+    local distance = #(vector3(x, y, z) - p)
+    local scaleBase = 200 / (GetGameplayCamFov() * math.max(distance, 0.1))
+
+    -- Add animation pulse. It multiplies the scale rather than being added to
+    -- it, so it stays proportional at any distance - added on, a fixed 0.05 is
+    -- a tenth of the size up close and several times the size far away.
+    local pulse = 1.0 + Config.PulseAmount * math.sin(GetGameTimer() / Config.PulseSpeed)
+    local scale = 0.35 * scaleBase * pulse
+    local alpha = math.floor(color[4] * fade)
+
+    if alpha <= 0 then return end
+
+    if Config.ShowIcon and iconReady then
+        local w = Config.Icon.size * scaleBase * pulse
+        local h = w * GetAspectRatio(false)
+
+        DrawSprite(Config.Icon.dict, Config.Icon.texture, _x, _y - h * 0.6, w, h, 0.0,
+            color[1], color[2], color[3], alpha)
     end
 
-    RequestStreamedTextureDict(Config.icon.dict, false)
-    while not HasStreamedTextureDictLoaded(Config.icon.dict) do
-        Wait(0)
-    end
-
-    dictLoaded = true
+    SetTextScale(scale, scale)
+    SetTextFont(4)
+    SetTextProportional(1)
+    SetTextCentre(true)
+    SetTextColour(color[1], color[2], color[3], alpha)
+    SetTextOutline()
+    SetTextEntry("STRING")
+    AddTextComponentString(text)
+    DrawText(_x, _y)
 end
 
-local function isTalking(serverId, playerIdx)
-    local state = Player(serverId).state
+-- The decor has to be registered before it can be read, otherwise DecorExistOn
+-- is always false and stealth mode never applies. Other resources hide a player
+-- with DecorSetBool(ped, "txylor_stealth", true) on their own client.
+Citizen.CreateThread(function()
+    DecorRegister("txylor_stealth", 2) -- 2 = bool
 
-    if state and state.talking ~= nil then
-        return state.talking
+    if Config.ShowIcon then
+        RequestStreamedTextureDict(Config.Icon.dict, false)
+        while not HasStreamedTextureDictLoaded(Config.Icon.dict) do
+            Wait(0)
+        end
+        iconReady = true
     end
+end)
 
-    return MumbleIsPlayerTalking(playerIdx) or NetworkIsPlayerTalking(playerIdx)
+-- Helper to check if a player has stealth mode enabled
+function IsPlayerStealthy(player)
+    local ped = GetPlayerPed(player)
+    return DecorExistOn(ped, "txylor_stealth") and DecorGetBool(ped, "txylor_stealth")
 end
 
-local function isOnRadio(serverId)
-    if not Config.radio.enabled then
-        return false
-    end
+-- pma-voice replicates this while the player transmits on a radio channel.
+function IsPlayerOnRadio(player)
+    if not Config.ShowRadio then return false end
 
-    local state = Player(serverId).state
-
+    local state = Player(GetPlayerServerId(player)).state
     return state ~= nil and state.radioActive == true
 end
 
-local function drawText(text, x, y, scale, r, g, b, a)
-    SetTextFont(Config.text.font)
-    SetTextScale(0.0, Config.text.size * scale)
-    SetTextColour(r, g, b, a)
-    SetTextCentre(true)
-    SetTextOutline()
-    SetTextEntry('STRING')
-    AddTextComponentString(text)
-    DrawText(x, y)
-end
+RegisterNetEvent('txylor:updateNames')
+AddEventHandler('txylor:updateNames', function(names)
+    playerNames = names or {}
+end)
 
-local function drawIndicator(ped, distance, onRadio)
-    local coords = GetPedBoneCoords(ped, SKEL_HEAD, 0.0, 0.0, 0.0)
-    local onScreen, x, y = World3dToScreen2d(coords.x, coords.y, coords.z + Config.heightOffset)
-
-    if not onScreen then
-        return
-    end
-
-    -- Keep the indicator roughly the same physical size regardless of distance
-    -- and of how far the player has zoomed in.
-    local scale = math.min(1.5, math.max(0.3, (1.0 / distance) * (70.0 / GetGameplayCamFov()) * 2.0))
-    local alpha = 255
-
-    -- Fade out over the last quarter of the draw distance.
-    local fadeStart = Config.maxDistance * 0.75
-    if distance > fadeStart then
-        alpha = math.floor(255 * (1.0 - (distance - fadeStart) / (Config.maxDistance - fadeStart)))
-    end
-
-    if Config.pulse.enabled then
-        local wave = (math.sin(GetGameTimer() / Config.pulse.speed * math.pi * 2.0) + 1.0) * 0.5
-        scale = scale * (1.0 + wave * Config.pulse.scale)
-        alpha = math.floor(alpha * (1.0 - Config.pulse.alpha + wave * Config.pulse.alpha))
-    end
-
-    if alpha <= 0 then
-        return
-    end
-
-    local color = (onRadio and Config.radio.color) or Config.icon.color
-    local textColor = (onRadio and Config.radio.color) or Config.text.color
-    local label = (onRadio and Config.radio.label) or Config.text.label
-    local textY = y
-
-    if Config.display ~= 'text' then
-        local frames = Config.icon.frames
-        local frame = frames[(math.floor(GetGameTimer() / Config.icon.frameTime) % #frames) + 1]
-        local width = Config.icon.size * scale
-        local height = width * GetAspectRatio(false)
-
-        DrawSprite(Config.icon.dict, frame, x, y, width, height, 0.0, color[1], color[2], color[3], alpha)
-        textY = y + (height * 0.5) + (Config.text.gap * scale)
-    end
-
-    if Config.display ~= 'icon' then
-        drawText(label, x, textY, scale, textColor[1], textColor[2], textColor[3], alpha)
-    end
-end
-
-CreateThread(function()
-    local myPlayer = PlayerId()
-
+Citizen.CreateThread(function()
     while true do
-        local ped = PlayerPedId()
-        local origin = GetEntityCoords(ped)
-        local found = {}
-
-        for _, playerIdx in ipairs(GetActivePlayers()) do
-            if playerIdx ~= myPlayer or Config.showSelf then
-                local targetPed = GetPlayerPed(playerIdx)
-
-                if DoesEntityExist(targetPed) then
-                    local distance = #(origin - GetEntityCoords(targetPed))
-
-                    if distance <= Config.maxDistance then
-                        found[#found + 1] = {
-                            ped = targetPed,
-                            playerIdx = playerIdx,
-                            serverId = GetPlayerServerId(playerIdx),
-                        }
-                    end
-                end
-            end
-        end
-
-        nearby = found
-        Wait(Config.scanInterval)
+        TriggerServerEvent('txylor:requestNames')
+        Wait(Config.NameRefreshInterval)
     end
 end)
 
-CreateThread(function()
-    loadTextureDict()
+-- Only show animated Speaking... above talking players
+Citizen.CreateThread(function()
+    local fadeStart = Config.MaxDistance * 0.75
 
     while true do
-        local count = #nearby
+        Wait(0)
+        local myPlayer = PlayerId()
+        local origin = GetEntityCoords(PlayerPedId())
 
-        if count == 0 then
-            Wait(250)
-        else
-            local ped = PlayerPedId()
-            local origin = GetEntityCoords(ped)
+        for _, player in ipairs(GetActivePlayers()) do
+            local ped = GetPlayerPed(player)
+            local coords = GetEntityCoords(ped)
+            local distance = #(origin - coords)
 
-            for i = 1, count do
-                local player = nearby[i]
-
-                if DoesEntityExist(player.ped) and isTalking(player.serverId, player.playerIdx) then
-                    local distance = #(origin - GetEntityCoords(player.ped))
-
-                    if distance <= Config.maxDistance
-                        and (not Config.requireLineOfSight or HasEntityClearLosToEntity(ped, player.ped, 17)) then
-                        drawIndicator(player.ped, distance, isOnRadio(player.serverId))
-                    end
-                end
+            if distance > Config.MaxDistance then
+                goto continue
             end
 
-            Wait(0)
-        end
-    end
-end)
+            if player == myPlayer and not Config.ShowSelf then
+                goto continue
+            end
 
-AddEventHandler('onResourceStop', function(resource)
-    if resource == GetCurrentResourceName() and dictLoaded then
-        SetStreamedTextureDictAsNoLongerNeeded(Config.icon.dict)
+            if Config.EnableStealthMode and IsPlayerStealthy(player) then
+                goto continue
+            end
+
+            if NetworkIsPlayerTalking(player) then
+                local onRadio = IsPlayerOnRadio(player)
+                local label = onRadio and Config.RadioLabel or Config.Label
+                local color = onRadio and Config.RadioColor or Config.Color
+                local name = Config.ShowNames and playerNames[GetPlayerServerId(player)]
+                local fade = 1.0
+
+                if distance > fadeStart then
+                    fade = 1.0 - (distance - fadeStart) / (Config.MaxDistance - fadeStart)
+                end
+
+                DrawText3DAnimated(coords.x, coords.y, coords.z + Config.HeightOffset,
+                    name and (name .. " - " .. label) or label, color, fade)
+            end
+            ::continue::
+        end
     end
 end)

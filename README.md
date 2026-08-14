@@ -21,23 +21,53 @@ Buy the latest version of [Active Speaker](https://store.ragecity.online/package
 
 # Configuration
 
-Every option lives in the `Config` table at the top of `client.lua`:
+Everything lives in the `Config` table at the top of `client.lua`:
 
 | Option | Description |
 |--------|-------------|
-| `showSelf` | Also draw the indicator above your own head (handy for testing). |
-| `maxDistance` | Draw distance in metres. The indicator fades out over the last quarter. |
-| `requireLineOfSight` | Hide the indicator when the player is behind cover. |
-| `heightOffset` | How far above the head bone the indicator sits. |
-| `display` | `'icon'`, `'text'` or `'both'`. |
-| `icon` | Texture dictionary, frames, frame time, size and colour of the icon. |
-| `text` | Label, font, size, colour and spacing of the text. |
-| `radio` | Alternate label/colour used while the player talks on the radio. |
-| `pulse` | Speed, scale and alpha of the pulsing animation. |
+| `Label` | The text drawn above a talking player. Plain text only, the GTA font has no emoji. |
+| `Color` | Colour of the label and icon, `{ r, g, b, a }`. |
+| `ShowNames` | Prefix the label with the players character name. |
+| `NameRefreshInterval` | How often (ms) each client asks the server for the name list. |
+| `ShowSelf` | Also draw the label above your own head. |
+| `MaxDistance` | Draw distance in metres. The label fades out over the last quarter. |
+| `HeightOffset` | How far above the player the label sits. |
+| `PulseAmount` | How much the label grows at the peak of the pulse. `0` disables the animation. |
+| `PulseSpeed` | How long (ms) one pulse takes. |
+| `ShowRadio` | Use a separate label and colour while the player talks on the radio. |
+| `RadioLabel` | Text shown instead of `Label` on the radio. |
+| `RadioColor` | Colour used instead of `Color` on the radio. |
+| `ShowIcon` | Draw a small speaker icon above the label. |
+| `Icon` | Texture dictionary, texture and size of that icon. |
+| `EnableStealthMode` | Let other resources hide a player from the display. |
 
-The default icon uses the built in `mpleaderboard` dictionary and cycles through
-`leaderboard_audio_1` to `leaderboard_audio_3`. Swap `icon.dict` and
-`icon.frames` for your own streamed texture dictionary to use a custom icon.
+The icon uses the built in `mpleaderboard` dictionary. Point `Icon.dict` and
+`Icon.texture` at your own streamed dictionary to use a custom one.
+
+Radio detection reads the `radioActive` state pma-voice replicates. If your
+version of pma-voice does not set it the label simply stays on `Label`, which is
+what the script did before.
+
+# Names
+
+`server.lua` looks the character name up from the ESX style `users` table
+through mysql-async and broadcasts the list to every client, which shows it as
+`John Doe - Speaking...`.
+
+Servers without mysql-async, and players with no row in `users`, fall back to
+the name the player connected with, so the label still appears. Set
+`ShowNames = false` to skip names entirely.
+
+# Stealth mode
+
+Any resource can hide a player from the display by setting a decor on their own
+client:
+
+```lua
+DecorSetBool(PlayerPedId(), "txylor_stealth", true)
+```
+
+The decor is registered by this resource, so nothing else needs to declare it.
 
 
 
