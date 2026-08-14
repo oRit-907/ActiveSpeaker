@@ -26,9 +26,27 @@ Everything lives in the `Config` table at the top of `client.lua`:
 | Option | Description |
 |--------|-------------|
 | `Label` | The text drawn above a talking player. Plain text only, the GTA font has no emoji. |
+| `Color` | Colour of the label and icon, `{ r, g, b, a }`. |
 | `ShowNames` | Prefix the label with the players character name. |
 | `NameRefreshInterval` | How often (ms) each client asks the server for the name list. |
+| `ShowSelf` | Also draw the label above your own head. |
+| `MaxDistance` | Draw distance in metres. The label fades out over the last quarter. |
+| `HeightOffset` | How far above the player the label sits. |
+| `PulseAmount` | How much the label grows at the peak of the pulse. `0` disables the animation. |
+| `PulseSpeed` | How long (ms) one pulse takes. |
+| `ShowRadio` | Use a separate label and colour while the player talks on the radio. |
+| `RadioLabel` | Text shown instead of `Label` on the radio. |
+| `RadioColor` | Colour used instead of `Color` on the radio. |
+| `ShowIcon` | Draw a small speaker icon above the label. |
+| `Icon` | Texture dictionary, texture and size of that icon. |
 | `EnableStealthMode` | Let other resources hide a player from the display. |
+
+The icon uses the built in `mpleaderboard` dictionary. Point `Icon.dict` and
+`Icon.texture` at your own streamed dictionary to use a custom one.
+
+Radio detection reads the `radioActive` state pma-voice replicates. If your
+version of pma-voice does not set it the label simply stays on `Label`, which is
+what the script did before.
 
 # Names
 
