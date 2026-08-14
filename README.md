@@ -39,6 +39,40 @@ The default icon uses the built in `mpleaderboard` dictionary and cycles through
 `leaderboard_audio_1` to `leaderboard_audio_3`. Swap `icon.dict` and
 `icon.frames` for your own streamed texture dictionary to use a custom icon.
 
+`display` controls the icon and the static label only. Names and tags are turned
+on server side, so they keep showing even with `display = 'icon'`.
+
+# Server side
+
+`server.lua` owns the data the client cannot work out on its own. Its own
+`Config` table decides what gets replicated:
+
+| Option | Description |
+|--------|-------------|
+| `showNames` | Draw the players name under the icon. |
+| `showServerIds` | Append the server id, e.g. `John Doe [12]`. |
+| `showTags` | Draw tags set through the exports below. |
+| `nameFormat` | Applied to the name before sending, `%s` is the player name. |
+
+Values are replicated with state bags, so players that join late or come back
+into scope always get the current data.
+
+## Exports
+
+Attach a tag to a player to show their job, rank or callsign while they talk.
+The optional colour also recolours their name.
+
+```lua
+-- shows "Police" under the name, in blue
+exports.ActiveSpeaker:setSpeakerTag(source, 'Police', { 60, 120, 255 })
+
+-- removes it again
+exports.ActiveSpeaker:clearSpeakerTag(source)
+
+-- { name = 'John Doe', tag = 'Police', color = { 60, 120, 255 } }
+local data = exports.ActiveSpeaker:getSpeakerData(source)
+```
+
 
 
 # Preview

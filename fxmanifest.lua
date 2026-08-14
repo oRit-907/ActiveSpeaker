@@ -7,5 +7,6 @@ description 'Visual indicator above a players head showing who is talking, power
 version '1.0.2'
 
 client_script 'client.lua'
+server_script 'server.lua'
 
 dependency 'pma-voice'

@@ -36,12 +36,16 @@ local Config = {
     },
 
     text = {
+        -- Static label drawn under the icon. Set to '' to only show the name
+        -- and tag supplied by server.lua.
         label = 'Speaking',
         font = 4,
         size = 0.5,
         color = { 255, 255, 255 },
-        -- Vertical gap between the icon and the label, in screen units.
+        -- Vertical gap between the icon and the first line, in screen units.
         gap = 0.018,
+        -- Vertical gap between two lines of text, in screen units.
+        lineGap = 0.022,
     },
 
     -- Shown instead of the values above while the player talks on the radio.
@@ -63,6 +67,14 @@ local Config = {
 }
 
 local SKEL_HEAD = 31086
+
+-- Mirrors the Config table in server.lua. These are only used until the server
+-- replicates its own values, or if server.lua is not running at all.
+local serverConfig = {
+    showNames = false,
+    showServerIds = false,
+    showTags = false,
+}
 
 local nearby = {}
 local dictLoaded = false
@@ -100,6 +112,14 @@ local function isOnRadio(serverId)
     return state ~= nil and state.radioActive == true
 end
 
+-- Name and tag replicated by server.lua. Returns nil when the server side is
+-- not running or has nothing for this player yet.
+local function speakerData(serverId)
+    local state = Player(serverId).state
+
+    return state and state.activeSpeaker or nil
+end
+
 local function drawText(text, x, y, scale, r, g, b, a)
     SetTextFont(Config.text.font)
     SetTextScale(0.0, Config.text.size * scale)
@@ -111,7 +131,41 @@ local function drawText(text, x, y, scale, r, g, b, a)
     DrawText(x, y)
 end
 
-local function drawIndicator(ped, distance, onRadio)
+-- Text drawn under the icon, top to bottom: player name, tag, static label.
+local function buildLines(serverId, onRadio)
+    local lines = {}
+    local data = speakerData(serverId)
+    local dataColor = (data and data.color) or Config.text.color
+
+    if data and serverConfig.showNames and data.name then
+        local name = data.name
+
+        if serverConfig.showServerIds then
+            name = ('%s [%d]'):format(name, serverId)
+        end
+
+        lines[#lines + 1] = { text = name, color = dataColor }
+    end
+
+    if data and serverConfig.showTags and data.tag then
+        lines[#lines + 1] = { text = data.tag, color = dataColor }
+    end
+
+    if Config.display ~= 'icon' then
+        local label = (onRadio and Config.radio.label) or Config.text.label
+
+        if label ~= '' then
+            lines[#lines + 1] = {
+                text = label,
+                color = (onRadio and Config.radio.color) or Config.text.color,
+            }
+        end
+    end
+
+    return lines
+end
+
+local function drawIndicator(ped, serverId, distance, onRadio)
     local coords = GetPedBoneCoords(ped, SKEL_HEAD, 0.0, 0.0, 0.0)
     local onScreen, x, y = World3dToScreen2d(coords.x, coords.y, coords.z + Config.heightOffset)
 
@@ -141,8 +195,6 @@ local function drawIndicator(ped, distance, onRadio)
     end
 
     local color = (onRadio and Config.radio.color) or Config.icon.color
-    local textColor = (onRadio and Config.radio.color) or Config.text.color
-    local label = (onRadio and Config.radio.label) or Config.text.label
     local textY = y
 
     if Config.display ~= 'text' then
@@ -155,8 +207,9 @@ local function drawIndicator(ped, distance, onRadio)
         textY = y + (height * 0.5) + (Config.text.gap * scale)
     end
 
-    if Config.display ~= 'icon' then
-        drawText(label, x, textY, scale, textColor[1], textColor[2], textColor[3], alpha)
+    for _, line in ipairs(buildLines(serverId, onRadio)) do
+        drawText(line.text, x, textY, scale, line.color[1], line.color[2], line.color[3], alpha)
+        textY = textY + (Config.text.lineGap * scale)
     end
 end
 
@@ -167,6 +220,8 @@ CreateThread(function()
         local ped = PlayerPedId()
         local origin = GetEntityCoords(ped)
         local found = {}
+
+        serverConfig = GlobalState.activeSpeaker or serverConfig
 
         for _, playerIdx in ipairs(GetActivePlayers()) do
             if playerIdx ~= myPlayer or Config.showSelf then
@@ -211,7 +266,7 @@ CreateThread(function()
 
                     if distance <= Config.maxDistance
                         and (not Config.requireLineOfSight or HasEntityClearLosToEntity(ped, player.ped, 17)) then
-                        drawIndicator(player.ped, distance, isOnRadio(player.serverId))
+                        drawIndicator(player.ped, player.serverId, distance, isOnRadio(player.serverId))
                     end
                 end
             end
