@@ -11,7 +11,7 @@ Buy the latest version of [Active Speaker](https://store.ragecity.online/package
 |                             |                    |
 |-----------------------------|--------------------|
 | dependencies | [pma-voice](https://github.com/AvarianKnight/pma-voice)       |
-| Latest Version | 1.0.2       |
+| Latest Version | 2.0.0       |
 
 # Installation
 
@@ -25,8 +25,8 @@ On start the server compares the `version` in `fxmanifest.lua` against the copy
 on GitHub and prints one line to the console:
 
 ```
-[ActiveSpeaker] up to date (1.0.0)
-[ActiveSpeaker] out of date. You are running 1.0.0, 1.0.2 is available.
+[ActiveSpeaker] up to date (2.0.0)
+[ActiveSpeaker] out of date. You are running 2.0.0, 2.1.0 is available.
 ```
 
 Releasing a new version is just bumping `version` in `fxmanifest.lua` and
