@@ -18,8 +18,12 @@ local function reset()
         players = {},
         commands = {},
         drawn = {},
-        sprites = 0,
-        sent = {}
+        sprites = {},
+        rects = {},
+        sent = {},
+        paused = false,
+        faded = false,
+        frameTime = 0.1
     }
 end
 
@@ -33,6 +37,7 @@ local function addPlayer(index, opts)
         visible = opts.visible ~= false,
         los = opts.los ~= false,
         stealth = opts.stealth or false,
+        dead = opts.dead or false,
         state = opts.state or {}
     }
     return world.players[index]
@@ -57,6 +62,12 @@ function IsEntityVisible(ped) local p = byPed(ped); return p and p.visible or fa
 function HasEntityClearLosToEntity(_, ped) local p = byPed(ped); return p and p.los or false end
 function NetworkIsPlayerTalking(i) return world.players[i] and world.players[i].talking or false end
 function IsPedInAnyVehicle() return false end
+function IsPedDeadOrDying(ped) local p = byPed(ped); return p and p.dead or false end
+function IsPauseMenuActive() return world.paused end
+function IsScreenFadedOut() return world.faded end
+function GetFrameTime() return world.frameTime end
+function GetCurrentResourceName() return 'ActiveSpeaker' end
+function GetResourceMetadata() return '2.2.0' end
 
 function GetActivePlayers()
     local list = {}
@@ -103,18 +114,49 @@ function World3dToScreen2d() return true, 0.5, 0.5 end
 function GetGameplayCamCoord() return world.players[world.me].coords end
 function GetGameplayCamFov() return 50.0 end
 function GetAspectRatio() return 1.77 end
-function SetTextScale() end
+function SetTextScale(s) pending.scale = s end
 function SetTextFont() end
 function SetTextProportional() end
-function SetTextCentre() end
+function SetTextCentre(v) pending.centre = v end
 function SetTextOutline() end
 function SetTextDropShadow() end
 function SetTextEntry() end
 function SetTextColour(r, g, b, a) pending.color = { r, g, b, a } end
 function AddTextComponentString(s) pending.text = s end
-function DrawSprite() world.sprites = world.sprites + 1 end
-function DrawText()
-    world.drawn[#world.drawn + 1] = { text = pending.text, color = pending.color }
+
+function DrawSprite(dict, texture)
+    world.sprites[#world.sprites + 1] = { dict = dict, texture = texture }
+end
+
+function DrawRect(x, y, w, h) world.rects[#world.rects + 1] = { x = x, y = y, w = w, h = h } end
+
+-- The 3d labels centre their text, the corner list does not, which is how the
+-- two are told apart here.
+function DrawText(x, y)
+    world.drawn[#world.drawn + 1] = {
+        text = pending.text,
+        color = pending.color,
+        scale = pending.scale,
+        centre = pending.centre,
+        x = x,
+        y = y
+    }
+end
+
+local function labels()
+    local out = {}
+    for _, d in ipairs(world.drawn) do
+        if d.centre then out[#out + 1] = d end
+    end
+    return out
+end
+
+local function rows()
+    local out = {}
+    for _, d in ipairs(world.drawn) do
+        if not d.centre then out[#out + 1] = d end
+    end
+    return out
 end
 
 -- exports + threads
@@ -128,8 +170,14 @@ local threads = {}
 function CreateThread(fn) threads[#threads + 1] = coroutine.create(fn) end
 function Wait() coroutine.yield() end
 
+-- One step is one pass over every thread, and moves the clock on by a scan
+-- interval, so the hold and fade timings behave like they would in game.
+local TICK = 250
+
 local function step(n)
     for _ = 1, n or 1 do
+        world.time = world.time + TICK
+
         for _, co in ipairs(threads) do
             if coroutine.status(co) == 'suspended' then
                 local ok, err = coroutine.resume(co)
@@ -139,6 +187,10 @@ local function step(n)
     end
 end
 
+-- Jump the clock without running anything, for testing what happens after a
+-- player has been quiet for a while.
+local function warp(ms) world.time = world.time + ms end
+
 -- ------------------------------------------------------------------- tests
 local failures = 0
 local function check(label, got, want)
@@ -147,6 +199,15 @@ local function check(label, got, want)
         print(('  FAIL %s: got %s, want %s'):format(label, tostring(got), tostring(want)))
     else
         print(('  ok   %s = %s'):format(label, tostring(got)))
+    end
+end
+
+local function checkNear(label, got, want, tol)
+    if type(got) ~= 'number' or math.abs(got - want) > (tol or 0.01) then
+        failures = failures + 1
+        print(('  FAIL %s: got %s, want about %s'):format(label, tostring(got), tostring(want)))
+    else
+        print(('  ok   %s = %.3f'):format(label, got))
     end
 end
 
@@ -205,13 +266,15 @@ step(3)
 check('stealth off shows', #talkerIds(), 1)
 
 -- 4: line of sight
+-- Behind cover the label is dimmed rather than dropped, so it stays in the
+-- list. What that dimming looks like is checked further down.
 print('\n== line of sight ==')
 boot(function() Config.RequireLineOfSight = true end)
 addPlayer(1, { x = 0, talking = false })
 addPlayer(2, { x = 5, los = false })
 loadClient()
 step(3)
-check('behind a wall hidden', #talkerIds(), 0)
+check('behind a wall still listed, dimmed', #talkerIds(), 1)
 
 boot()
 addPlayer(1, { x = 0, talking = false })
@@ -390,6 +453,270 @@ addPlayer(2, { x = 5 })
 loadClient()
 step(10)
 check('no request sent', #world.sent, 0)
+
+-- 13: scale clamping
+-- Without the clamp the label is 1.4 / distance, so it fills the screen point
+-- blank and is an unreadable 0.07 at the default 20m range.
+print('\n== scale is clamped into a readable band ==')
+local function scaleAt(distance, configure)
+    boot(function()
+        Config.PulseAmount = 0 -- so the recorded scale is exactly the clamp
+        if configure then configure() end
+    end)
+    addPlayer(1, { x = 0, talking = false })
+    addPlayer(2, { x = distance })
+    loadClient()
+    step(4)
+    local l = labels()
+    return l[#l] and l[#l].scale
+end
+
+-- 14m rather than the full 20m: at exactly MaxDistance the distance fade has
+-- reached zero and there is no label left to measure.
+checkNear('point blank is capped at MaxScale', scaleAt(1), 0.55)
+checkNear('14m is lifted to MinScale', scaleAt(14), 0.18)
+checkNear('mid range is left alone', scaleAt(5), 0.273)
+checkNear('MinScale 0 restores the old scaling', scaleAt(14, function()
+    Config.MinScale = 0
+end), 0.0997, 0.002)
+
+-- 14: hold time
+print('\n== the label is held through a pause in speech ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+local speaker = addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('talking', #talkerIds(), 1)
+
+speaker.talking = false
+step(1)
+check('still held just after they stop', #talkerIds(), 1)
+
+warp(1000)
+step(1)
+check('gone once the hold and fade have run out', #talkerIds(), 0)
+
+print('\n== hold time of 0 drops it immediately ==')
+boot(function()
+    Config.HoldTime = 0
+    Config.FadeTime = 0
+end)
+addPlayer(1, { x = 0, talking = false })
+speaker = addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('talking', #talkerIds(), 1)
+speaker.talking = false
+step(1)
+check('gone at once', #talkerIds(), 0)
+
+-- 15: fade in and out
+print('\n== fade in and out ==')
+boot(function() Config.PulseAmount = 0 end)
+addPlayer(1, { x = 0, talking = false })
+speaker = addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('full alpha while talking', labels()[#labels()].color[4], 230)
+
+speaker.talking = false
+-- 400ms hold then a 200ms fade, and a step is 250ms, so this lands 500ms
+-- after they stopped: halfway through the fade out.
+warp(250)
+step(1)
+local faded = labels()[#labels()]
+check('halfway through the fade out', faded.color[4] > 90 and faded.color[4] < 140, true)
+
+-- 16: occlusion
+print('\n== dimmed behind cover rather than hidden ==')
+boot(function()
+    Config.RequireLineOfSight = true
+    Config.PulseAmount = 0
+end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, los = false })
+loadClient()
+step(4)
+check('still listed', #talkerIds(), 1)
+-- frameTime 0.1 makes the ease land on the target in one frame
+check('drawn at OccludedAlpha', labels()[#labels()].color[4], math.floor(230 * 0.35))
+
+print('\n== OccludedAlpha 0 hides it completely ==')
+boot(function()
+    Config.RequireLineOfSight = true
+    Config.OccludedAlpha = 0
+end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, los = false })
+loadClient()
+step(4)
+check('dropped', #talkerIds(), 0)
+check('nothing drawn', #labels(), 0)
+
+print('\n== the dim is eased, not snapped ==')
+boot(function()
+    Config.RequireLineOfSight = true
+    Config.PulseAmount = 0
+end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, los = false })
+loadClient()
+world.frameTime = 0.016 -- a real frame
+step(4)
+local eased = labels()[#labels()].color[4]
+check('part way between full and dimmed', eased < 230 and eased > math.floor(230 * 0.35), true)
+
+-- 17: dead players
+print('\n== dead players ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, dead = true })
+loadClient()
+step(4)
+check('hidden', #talkerIds(), 0)
+
+boot(function() Config.HideWhenDead = false end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, dead = true })
+loadClient()
+step(4)
+check('shown with the option off', #talkerIds(), 1)
+
+-- 18: pause menu
+print('\n== pause menu and screen fades ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('drawn normally', #labels() > 0, true)
+
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+world.paused = true
+step(6)
+check('nothing drawn while paused', #labels(), 0)
+check('but still tracked', #talkerIds(), 1)
+
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+world.faded = true
+step(6)
+check('nothing drawn while faded out', #labels(), 0)
+
+-- 19: radio icon
+print('\n== a different icon on the radio ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('normal icon', world.sprites[#world.sprites].texture, 'leaderboard_audio_3')
+
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, state = { radioActive = true } })
+loadClient()
+step(4)
+check('radio icon', world.sprites[#world.sprites].texture, 'leaderboard_audio_1')
+
+boot(function() Config.RadioIcon = nil end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5, state = { radioActive = true } })
+loadClient()
+step(4)
+check('falls back to the normal icon', world.sprites[#world.sprites].texture, 'leaderboard_audio_3')
+
+-- 20: the corner list
+print('\n== the corner list ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('off by default', #rows(), 0)
+check('no panel drawn', #world.rects, 0)
+
+boot(function() Config.ShowList = true end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(1)
+netEvents['activespeaker:setName'](102, 'John Doe')
+step(3)
+-- Rows are redrawn every frame, so clear and take a single frame to look at.
+world.drawn, world.rects = {}, {}
+step(1)
+local listed = rows()
+check('a title and a name', #listed, 2)
+check('title first', listed[1].text, 'Speaking')
+check('then the name', listed[2].text, 'John Doe')
+check('panel drawn behind it', #world.rects, 1)
+
+print('\n== the list falls back to a player id ==')
+boot(function() Config.ShowList = true end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+world.drawn = {}
+step(1)
+check('id used when there is no name', rows()[2].text, 'Player 102')
+
+print('\n== the list is capped and ordered ==')
+boot(function()
+    Config.ShowList = true
+    Config.List.rows = 2
+    Config.List.title = false
+end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 15 })
+addPlayer(3, { x = 2 })
+addPlayer(4, { x = 8 })
+loadClient()
+step(4)
+world.drawn = {}
+step(1)
+listed = rows()
+check('capped to List.rows', #listed, 2)
+check('nearest first', listed[1].text, 'Player 103')
+check('then the next nearest', listed[2].text, 'Player 104')
+
+print('\n== the list follows the toggle ==')
+boot(function() Config.ShowList = true end)
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(4)
+check('shown', #rows() > 0, true)
+world.commands['activespeaker']()
+world.drawn = {}
+step(4)
+check('hidden with the labels', #rows(), 0)
+
+-- 21: command arguments
+print('\n== command arguments ==')
+boot()
+addPlayer(1, { x = 0, talking = false })
+addPlayer(2, { x = 5 })
+loadClient()
+step(2)
+world.commands['activespeaker']({}, { 'off' })
+step(2)
+check('off', #talkerIds(), 0)
+world.commands['activespeaker']({}, { 'off' })
+step(2)
+check('off again is still off', #talkerIds(), 0)
+world.commands['activespeaker']({}, { 'on' })
+step(2)
+check('on', #talkerIds(), 1)
+world.commands['activespeaker']({}, { 'debug' })
+check('debug asked the server for its half', world.sent[#world.sent], 'activespeaker:requestDebug')
 
 print(failures == 0 and '\nALL PASS' or ('\n' .. failures .. ' FAILURES'))
 os.exit(failures == 0 and 0 or 1)

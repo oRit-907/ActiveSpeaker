@@ -1,7 +1,10 @@
 local REQUEST_COOLDOWN = 5000
+local DEBUG_COOLDOWN = 3000
 
 local playerNames = {}
 local lastRequest = {}
+local lastDebug = {}
+local stealthed = {}
 local framework = 'none'
 local QBCore
 local ESX
@@ -159,6 +162,8 @@ AddEventHandler('playerDropped', function()
     local src = source
 
     lastRequest[src] = nil
+    lastDebug[src] = nil
+    stealthed[src] = nil
     setName(src, nil)
 end)
 
@@ -210,8 +215,48 @@ AddEventHandler('esx:playerLoaded', function(playerId, xPlayer)
 end)
 
 -- ============================================================================
+-- Diagnostics
+-- ============================================================================
+
+local function resolvedCount()
+    local count = 0
+
+    for _ in pairs(playerNames) do
+        count = count + 1
+    end
+
+    return count
+end
+
+-- Fills in the half of /activespeaker debug that only the server knows.
+RegisterNetEvent('activespeaker:requestDebug', function()
+    local src = source
+    local now = GetGameTimer()
+
+    if lastDebug[src] and now - lastDebug[src] < DEBUG_COOLDOWN then
+        return
+    end
+
+    lastDebug[src] = now
+
+    TriggerClientEvent('activespeaker:debugReply', src, {
+        framework = framework,
+        names = resolvedCount()
+    })
+end)
+
+-- ============================================================================
 -- Exports
 -- ============================================================================
+
+local function setStealth(src, state)
+    state = state and true or false
+    stealthed[src] = state or nil
+
+    TriggerClientEvent('activespeaker:setStealth', src, state)
+
+    return state
+end
 
 -- exports.ActiveSpeaker:getName(source)
 exports('getName', function(src)
@@ -224,8 +269,94 @@ end)
 
 -- Hide or show a player without needing code on their client.
 exports('setPlayerStealth', function(src, state)
-    TriggerClientEvent('activespeaker:setStealth', src, state and true or false)
+    setStealth(src, state)
 end)
+
+exports('isPlayerStealthed', function(src)
+    return stealthed[src] == true
+end)
+
+-- ============================================================================
+-- Commands
+-- ============================================================================
+
+-- The server console has no chat to reply into, and an admin in game cannot see
+-- the console, so answer wherever the command came from.
+local function reply(src, message)
+    if src == 0 then
+        ASPrint(message)
+        return
+    end
+
+    TriggerClientEvent('chat:addMessage', src, {
+        color = { 90, 200, 255 },
+        args = { 'Active Speaker', message }
+    })
+end
+
+if Config.AdminCommand then
+    RegisterCommand(Config.AdminCommand, function(src, args)
+        local target = tonumber(args[1])
+
+        if not target then
+            reply(src, ('usage: /%s <player id> [hide|show]'):format(Config.AdminCommand))
+            return
+        end
+
+        -- Some builds answer nil for an id nobody is using, others an empty
+        -- string.
+        local targetName = GetPlayerName(target)
+
+        if targetName == nil or targetName == '' then
+            reply(src, ('no player is connected with id %d'):format(target))
+            return
+        end
+
+        local wanted
+        local choice = args[2] and tostring(args[2]):lower() or nil
+
+        if choice == 'hide' then
+            wanted = true
+        elseif choice == 'show' then
+            wanted = false
+        else
+            wanted = not stealthed[target]
+        end
+
+        setStealth(target, wanted)
+
+        reply(src, (L(wanted and 'admin_hidden' or 'admin_shown')):format(playerNames[target] or targetName))
+        ASDebug(('%s set stealth %s on %s'):format(src, tostring(wanted), target))
+    end, true) -- restricted, needs the ace permission command.<name>
+end
+
+if Config.StatusCommand then
+    RegisterCommand(Config.StatusCommand, function(src)
+        reply(src, ('version %s, framework %s'):format(
+            GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or 'unknown', framework))
+        reply(src, ('pma-voice %s'):format(GetResourceState('pma-voice')))
+        reply(src, ('names %s, %d resolved of %d connected'):format(
+            Config.ShowNames and 'on' or 'off', resolvedCount(), #GetPlayers()))
+
+        local hidden = 0
+        for _ in pairs(stealthed) do
+            hidden = hidden + 1
+        end
+
+        reply(src, ('%d player(s) hidden from the display'):format(hidden))
+        reply(src, ('range %.1fm, scale %.2f to %.2f, list %s'):format(
+            Config.MaxDistance, Config.MinScale, Config.MaxScale,
+            Config.ShowList and 'on' or 'off'))
+
+        if GetResourceState('pma-voice') ~= 'started' then
+            reply(src, 'pma-voice is not started under that name, nobody will show as talking')
+        end
+
+        if Config.ShowNames and framework == 'none' then
+            reply(src, 'no framework was detected, names are the ones players connected with')
+        end
+    end, true) -- restricted, needs the ace permission command.<name>
+end
 
 -- ============================================================================
 -- Start

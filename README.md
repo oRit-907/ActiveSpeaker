@@ -9,7 +9,7 @@ You can customize Icon and text to your liking using the config.lua file.
 |                             |                    |
 |-----------------------------|--------------------|
 | dependencies | [pma-voice](https://github.com/AvarianKnight/pma-voice)       |
-| Latest Version | 2.1.0       |
+| Latest Version | 2.2.0       |
 
 # Installation
 
@@ -25,8 +25,49 @@ for names, and warns you if pma-voice does not look like it is running.
 | Command | Who | Does |
 |---------|-----|------|
 | `/activespeaker` | everyone | Turns the labels on or off, for that player only. The choice is remembered on their machine across reconnects. |
+| `/activespeaker on`, `/activespeaker off` | everyone | Sets it either way instead of toggling. |
+| `/activespeaker debug` | everyone | Prints what the client can see to `F8`. See below. |
+| `/asmute <id> [hide\|show]` | admins | Hides a player from the display, or shows them again. Works from the server console. |
+| `/asstatus` | admins | The server side of the diagnostics. |
 
-Rename it with `Config.ToggleCommand`, or set that to `false` to remove it.
+Rename any of them with `Config.ToggleCommand`, `Config.AdminCommand` and
+`Config.StatusCommand`, or set one to `false` to remove it.
+
+The two admin commands are registered as restricted, so they need an ace
+permission. In your `server.cfg`:
+
+```
+add_ace group.admin command.asmute allow
+add_ace group.admin command.asstatus allow
+```
+
+Neither is needed to run them from the server console.
+
+# Something is not showing up
+
+Type `/activespeaker debug` in game. It prints what the client can actually see:
+
+```
+[ActiveSpeaker] ---- diagnostics ----
+[ActiveSpeaker] version         2.2.0
+[ActiveSpeaker] labels          on
+[ActiveSpeaker] pma-voice       started
+[ActiveSpeaker] icon            loaded (mpleaderboard)
+[ActiveSpeaker] names           4 received
+[ActiveSpeaker] talking nearby  1
+[ActiveSpeaker] players near    4, replicating radioActive 4, proximity 0
+[ActiveSpeaker] range           20.0m, fade from 75%, scale 0.18 to 0.55
+[ActiveSpeaker] hold 400ms, fade 200ms, scan 200ms
+[ActiveSpeaker] framework       qbcore (from the server)
+[ActiveSpeaker] names resolved  4 (from the server)
+[ActiveSpeaker] ---- end ----
+```
+
+It also warns about the mismatches that cause most "it does not work" reports -
+pma-voice not running under that name, `MatchVoiceRange` being on when nothing
+replicates proximity, `ShowRadio` being on when nothing replicates
+`radioActive`, or no name list having arrived. `/asstatus` prints the server
+half on its own.
 
 # Configuration
 
@@ -58,12 +99,31 @@ rather than as a label that quietly never appears:
 | `Outline` | Thick border around the text. |
 | `Shadow` | Softer drop shadow behind the text. Can be used with the outline. |
 
+### Size
+
+| Option | Description |
+|--------|-------------|
+| `MinScale` | Smallest the label is allowed to get. |
+| `MaxScale` | Largest the label is allowed to get. |
+
+Sized by distance alone the label works out to about `1.4 / distance`, which
+fills the screen point blank and reaches an unreadable 0.07 by 20m - so most of
+the draw distance was showing labels nobody could make out. These hold it in a
+band you can read at any range. Set `MinScale = 0` to go back to scaling purely
+by distance.
+
 ### Animation
 
 | Option | Description |
 |--------|-------------|
 | `PulseAmount` | How much the label grows at the peak of the pulse. `0` disables the animation. |
 | `PulseSpeed` | How long (ms) one pulse takes. |
+| `HoldTime` | How long (ms) the label stays up after a player stops talking. |
+| `FadeTime` | How long (ms) the label takes to fade in and out. `0` pops it in and out. |
+
+Voice detection drops out in the pauses between words, so without `HoldTime` the
+label flickers through an ordinary sentence. Raise it if you still see a
+flicker.
 
 ### Icon
 
@@ -71,11 +131,16 @@ rather than as a label that quietly never appears:
 |--------|-------------|
 | `ShowIcon` | Draw a small speaker icon above the label. |
 | `Icon` | Texture dictionary, texture and size of that icon. |
+| `RadioIcon` | A different icon while the player is on the radio. `nil` uses the same one for both. |
 
 The icon uses the built in `mpleaderboard` dictionary. Point `Icon.dict` and
 `Icon.texture` at your own streamed dictionary to use a custom one. If the
 dictionary never loads, the icon turns itself off and says so in `F8` rather
 than retrying forever.
+
+`RadioIcon` exists so radio and proximity are told apart by shape and not only
+by colour, which matters for colourblind players. It defaults to a different
+texture in the same dictionary, so it costs no extra streaming.
 
 ### Range
 
@@ -84,8 +149,11 @@ than retrying forever.
 | `MaxDistance` | Draw distance in metres. |
 | `FadeStart` | Where the fade out begins, as a fraction of that distance. `0.75` fades over the last quarter, `1.0` disables the fade. |
 | `MatchVoiceRange` | Match the range to how loud the player is actually talking. See below. |
-| `RequireLineOfSight` | Only draw the label when nothing is in the way. |
+| `RequireLineOfSight` | Check whether anything is in the way before drawing. |
+| `OccludedAlpha` | What a label behind a wall fades to. `0` hides it completely. |
 | `IgnoreInvisible` | Skip players whose ped is not being rendered, so invisible admins do not give themselves away. |
+| `HideWhenDead` | Skip dead players. |
+| `HideInPauseMenu` | Hide every label while the pause menu is open or the screen is faded out. |
 | `ShowSelf` | Also draw the label above your own head. |
 | `MaxLabels` | Most labels drawn at once, nearest first. `0` is unlimited. |
 | `ScanInterval` | How often (ms) each client looks for who is talking. See below. |
@@ -100,6 +168,25 @@ than retrying forever.
 Radio detection reads the `radioActive` state pma-voice replicates. If your
 version of pma-voice does not set it the label simply stays on `Label`.
 
+### Speaker list
+
+| Option | Description |
+|--------|-------------|
+| `ShowList` | A panel in the corner listing everyone you can currently hear. Off by default. |
+| `List.x`, `List.y` | Top left corner, as a fraction of the screen. |
+| `List.scale`, `List.lineHeight` | Text size and the gap between rows. Change both together. |
+| `List.rows` | Most names listed at once. |
+| `List.width` | Width of the panel behind the names. |
+| `List.background`, `List.backgroundColor`, `List.padding` | The panel behind the names. |
+| `List.title` | A "Speaking" heading above the names. |
+
+Useful on radio heavy servers, where whoever is talking is often not on screen.
+The list holds the same people as the labels, so it follows the same range,
+stealth, hold and toggle rules, and it is ordered nearest first. Rows use the
+radio colour for players on the radio, and fall back to `Player 12` when there
+is no character name. Placement is in screen fractions, so nudge `List.x` and
+`List.y` once you can see it against your own HUD.
+
 ### Toggle
 
 | Option | Description |
@@ -107,6 +194,8 @@ version of pma-voice does not set it the label simply stays on `Label`.
 | `ToggleCommand` | Name of the command players use to hide the labels. `false` removes it. |
 | `RememberToggle` | Remember that choice across reconnects. |
 | `Notify` | How the toggle confirms itself. `auto`, `chat`, `ox_lib` or `none`. |
+| `AdminCommand` | Name of the admin hide command. `false` removes it. |
+| `StatusCommand` | Name of the server status command. `false` removes it. |
 
 ### Names
 
@@ -134,8 +223,10 @@ getting a label you cannot hear. `MaxDistance` still applies as a hard cap, and
 if your pma-voice does not replicate proximity the option quietly does nothing.
 
 `RequireLineOfSight` stops labels showing through walls. It costs one ray per
-talking player per scan, which is cheap, but it also hides people behind thin
-cover, so it is off by default.
+talking player per scan, which is cheap. Rather than hiding the label outright,
+it fades to `OccludedAlpha` and eases between the two, so walking behind a
+pillar dims the label instead of blinking it. Set `OccludedAlpha = 0` if you do
+want it gone completely.
 
 # Performance
 
@@ -216,6 +307,7 @@ DecorSetBool(PlayerPedId(), "txylor_stealth", true)
 | `getName(source)` | string | The character name currently being shown for that player. |
 | `refreshName(source)` | | Look the name up again, after a character rename. |
 | `setPlayerStealth(source, state)` | | Hide or show that player. |
+| `isPlayerStealthed(source)` | boolean | Whether this resource is currently hiding them. |
 
 # Version check
 
@@ -223,8 +315,8 @@ On start the server compares the `version` in `fxmanifest.lua` against the copy
 on GitHub and prints one line to the console:
 
 ```
-[ActiveSpeaker] up to date (2.1.0)
-[ActiveSpeaker] out of date. You are running 2.0.0, 2.1.0 is available.
+[ActiveSpeaker] up to date (2.2.0)
+[ActiveSpeaker] out of date. You are running 2.1.0, 2.2.0 is available.
 ```
 
 Releasing a new version is just bumping `version` in `fxmanifest.lua` and

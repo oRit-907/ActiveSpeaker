@@ -73,31 +73,37 @@ local function asBool(key, default)
     end
 end
 
-local function asColor(key, default)
-    local value = Config[key]
-
+-- Clamps a { r, g, b, a } table in place. Returns nil when it is past saving,
+-- so the caller can drop in its own default.
+local function normalizeColor(value, name)
     if type(value) ~= 'table' then
-        Config[key] = fix(key, default, 'is not a { r, g, b, a } table')
-        return
+        return nil
     end
 
-    -- Three channels is the easiest mistake to make here, and the label would
+    -- Three channels is the easiest mistake to make here, and the colour would
     -- be fully transparent without the fourth, so fill it in rather than
-    -- throwing the whole colour away.
+    -- throwing the whole thing away.
     if #value == 3 then
         value[4] = 255
-        problems[#problems + 1] = ('Config.%s had no alpha, using 255'):format(key)
+        problems[#problems + 1] = ('Config.%s had no alpha, using 255'):format(name)
     end
 
     for i = 1, 4 do
         local channel = tonumber(value[i])
 
         if channel == nil then
-            Config[key] = fix(key, default, 'has a channel that is not a number')
-            return
+            return nil
         end
 
         value[i] = math.max(0, math.min(255, math.floor(channel)))
+    end
+
+    return value
+end
+
+local function asColor(key, default)
+    if not normalizeColor(Config[key], key) then
+        Config[key] = fix(key, default, 'is not a { r, g, b, a } table of numbers')
     end
 end
 
@@ -116,6 +122,65 @@ local function asChoice(key, default, allowed)
     end
 
     Config[key] = fix(key, default, ("is not one of '" .. table.concat(allowed, "', '") .. "'"))
+end
+
+-- Same checks, one level down, for the nested Icon and List tables.
+local function asSubNumber(tbl, name, key, default, min, max)
+    local value = tonumber(tbl[key])
+
+    if value == nil then
+        tbl[key] = fix(name .. '.' .. key, default, 'is not a number')
+        return
+    end
+
+    if min and value < min then
+        tbl[key] = fix(name .. '.' .. key, min, ('is below the minimum of %s'):format(min))
+        return
+    end
+
+    if max and value > max then
+        tbl[key] = fix(name .. '.' .. key, max, ('is above the maximum of %s'):format(max))
+        return
+    end
+
+    tbl[key] = value
+end
+
+local function asSubBool(tbl, name, key, default)
+    if type(tbl[key]) ~= 'boolean' then
+        tbl[key] = fix(name .. '.' .. key, default, 'is not true or false')
+    end
+end
+
+-- Returns the icon table when it is usable, or nil with a reason recorded.
+local function checkIcon(icon, name)
+    if type(icon) ~= 'table'
+        or type(icon.dict) ~= 'string'
+        or type(icon.texture) ~= 'string' then
+        problems[#problems + 1] = ('Config.%s needs a dict and a texture'):format(name)
+        return nil
+    end
+
+    icon.size = tonumber(icon.size) or 0.06
+
+    if icon.size <= 0 then
+        problems[#problems + 1] = ('Config.%s.size is not above zero'):format(name)
+        return nil
+    end
+
+    return icon
+end
+
+local function asCommand(key, default)
+    -- false is a valid answer, it removes the command.
+    if Config[key] == false then return end
+
+    if type(Config[key]) ~= 'string' or Config[key] == '' then
+        Config[key] = fix(key, default, 'is not a command name or false')
+        return
+    end
+
+    Config[key] = Config[key]:gsub('^/', '')
 end
 
 local function asLabel(key, localeKey)
@@ -144,44 +209,72 @@ local function validate()
     asBool('Outline', true)
     asBool('Shadow', false)
 
+    asNumber('MinScale', 0.18, 0.0, 2.0)
+    asNumber('MaxScale', 0.55, 0.01, 5.0)
+
+    -- Crossed over, the label would be pinned to whichever was checked last.
+    if Config.MinScale > Config.MaxScale then
+        Config.MinScale, Config.MaxScale = Config.MaxScale, Config.MinScale
+        problems[#problems + 1] = 'Config.MinScale was above Config.MaxScale, they have been swapped'
+    end
+
     asNumber('PulseAmount', 0.15, 0.0, 5.0)
     asNumber('PulseSpeed', 200, 1, 100000)
+    asNumber('HoldTime', 400, 0, 10000)
+    asNumber('FadeTime', 200, 0, 10000)
 
     asBool('ShowIcon', true)
 
-    if type(Config.Icon) ~= 'table'
-        or type(Config.Icon.dict) ~= 'string'
-        or type(Config.Icon.texture) ~= 'string' then
+    if Config.ShowIcon and not checkIcon(Config.Icon, 'Icon') then
         Config.ShowIcon = false
-        problems[#problems + 1] = 'Config.Icon needs a dict and a texture, the icon is off'
-    else
-        Config.Icon.size = tonumber(Config.Icon.size) or 0.06
+        problems[#problems + 1] = 'the icon is off'
+    end
 
-        if Config.Icon.size <= 0 then
-            Config.ShowIcon = false
-            problems[#problems + 1] = 'Config.Icon.size is not above zero, the icon is off'
-        end
+    -- nil is a valid answer, it means use the same icon on the radio.
+    if Config.RadioIcon ~= nil and not checkIcon(Config.RadioIcon, 'RadioIcon') then
+        Config.RadioIcon = nil
+        problems[#problems + 1] = 'the radio icon falls back to Config.Icon'
     end
 
     asNumber('MaxDistance', 20.0, 1.0, 500.0)
     asNumber('FadeStart', 0.75, 0.0, 1.0)
     asBool('MatchVoiceRange', false)
     asBool('RequireLineOfSight', false)
+    asNumber('OccludedAlpha', 0.35, 0.0, 1.0)
     asBool('IgnoreInvisible', true)
+    asBool('HideWhenDead', true)
+    asBool('HideInPauseMenu', true)
     asBool('ShowSelf', false)
     asNumber('MaxLabels', 0, 0, 128)
     asNumber('ScanInterval', 200, 50, 5000)
 
     asBool('ShowRadio', true)
 
-    -- false is a valid answer here, it removes the command.
-    if Config.ToggleCommand ~= false then
-        if type(Config.ToggleCommand) ~= 'string' or Config.ToggleCommand == '' then
-            Config.ToggleCommand = fix('ToggleCommand', 'activespeaker', 'is not a command name or false')
-        else
-            Config.ToggleCommand = Config.ToggleCommand:gsub('^/', '')
-        end
+    asBool('ShowList', false)
+
+    if type(Config.List) ~= 'table' then
+        Config.List = {}
+        problems[#problems + 1] = 'Config.List is not a table, the list uses its defaults'
     end
+
+    asSubNumber(Config.List, 'List', 'x', 0.015, 0.0, 1.0)
+    asSubNumber(Config.List, 'List', 'y', 0.30, 0.0, 1.0)
+    asSubNumber(Config.List, 'List', 'scale', 0.35, 0.05, 2.0)
+    asSubNumber(Config.List, 'List', 'lineHeight', 0.026, 0.005, 0.5)
+    asSubNumber(Config.List, 'List', 'rows', 5, 1, 32)
+    asSubNumber(Config.List, 'List', 'width', 0.16, 0.01, 1.0)
+    asSubNumber(Config.List, 'List', 'padding', 0.008, 0.0, 0.1)
+    asSubBool(Config.List, 'List', 'background', true)
+    asSubBool(Config.List, 'List', 'title', true)
+
+    if not normalizeColor(Config.List.backgroundColor, 'List.backgroundColor') then
+        Config.List.backgroundColor = { 0, 0, 0, 120 }
+        problems[#problems + 1] = 'Config.List.backgroundColor is not a { r, g, b, a } table of numbers, using black'
+    end
+
+    asCommand('ToggleCommand', 'activespeaker')
+    asCommand('AdminCommand', 'asmute')
+    asCommand('StatusCommand', 'asstatus')
 
     asBool('RememberToggle', true)
     asChoice('Notify', 'auto', { 'auto', 'chat', 'ox_lib', 'none' })

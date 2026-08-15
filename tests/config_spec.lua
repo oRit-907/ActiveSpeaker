@@ -96,5 +96,111 @@ check('g', Config.Color[2], 0)
 check('b', Config.Color[3], 12)
 check('a', Config.Color[4], 255)
 
+-- ---------------------------------------------------------------- scale
+print('\n== scale clamps ==')
+load('config.lua')
+load('shared.lua')
+check('MinScale', Config.MinScale, 0.18)
+check('MaxScale', Config.MaxScale, 0.55)
+
+load('config.lua')
+Config.MinScale = 0.9
+Config.MaxScale = 0.2
+load('shared.lua')
+check('crossed over, min', Config.MinScale, 0.2)
+check('crossed over, max', Config.MaxScale, 0.9)
+
+-- ---------------------------------------------------------------- timing
+print('\n== hold and fade ==')
+load('config.lua')
+Config.HoldTime = -100
+Config.FadeTime = 'slow'
+load('shared.lua')
+check('HoldTime', Config.HoldTime, 0)
+check('FadeTime', Config.FadeTime, 200)
+
+-- ---------------------------------------------------------------- occlusion
+print('\n== occluded alpha ==')
+load('config.lua')
+Config.OccludedAlpha = 5
+load('shared.lua')
+check('clamped to 1', Config.OccludedAlpha, 1.0)
+
+-- ---------------------------------------------------------------- radio icon
+print('\n== radio icon ==')
+load('config.lua')
+load('shared.lua')
+check('kept', Config.RadioIcon.texture, 'leaderboard_audio_1')
+
+load('config.lua')
+Config.RadioIcon = { dict = 'x' } -- no texture
+load('shared.lua')
+check('dropped back to the normal icon', Config.RadioIcon, nil)
+check('the normal icon is untouched', Config.ShowIcon, true)
+
+load('config.lua')
+Config.RadioIcon = nil
+load('shared.lua')
+check('nil stays nil', Config.RadioIcon, nil)
+
+load('config.lua')
+Config.Icon = { dict = 'x' } -- no texture
+load('shared.lua')
+check('a broken main icon turns the icon off', Config.ShowIcon, false)
+
+-- ---------------------------------------------------------------- list
+print('\n== list ==')
+load('config.lua')
+Config.List.rows = 0
+Config.List.scale = 'big'
+Config.List.x = 5
+Config.List.background = 'yes'
+Config.List.backgroundColor = { 0, 0, 0 }
+load('shared.lua')
+check('rows', Config.List.rows, 1)
+check('scale', Config.List.scale, 0.35)
+check('x', Config.List.x, 1.0)
+check('background', Config.List.background, true)
+check('background alpha filled in', Config.List.backgroundColor[4], 255)
+
+load('config.lua')
+Config.List = 'somewhere'
+load('shared.lua')
+check('a list that is not a table gets defaults', Config.List.rows, 5)
+check('and a usable colour', Config.List.backgroundColor[4], 120)
+
+-- ---------------------------------------------------------------- commands
+print('\n== commands ==')
+load('config.lua')
+Config.AdminCommand = '/hide'
+Config.StatusCommand = 12
+load('shared.lua')
+check('leading slash stripped', Config.AdminCommand, 'hide')
+check('a number is not a command name', Config.StatusCommand, 'asstatus')
+
+load('config.lua')
+Config.AdminCommand = false
+Config.StatusCommand = false
+load('shared.lua')
+check('false is kept for AdminCommand', Config.AdminCommand, false)
+check('false is kept for StatusCommand', Config.StatusCommand, false)
+
+-- ---------------------------------------------------------------- locales
+print('\n== every locale has every key ==')
+load('config.lua')
+load('locales.lua')
+load('shared.lua')
+
+local missing = 0
+for name, locale in pairs(Locales) do
+    for key in pairs(Locales.en) do
+        if locale[key] == nil then
+            missing = missing + 1
+            print(('  FAIL %s is missing %s'):format(name, key))
+        end
+    end
+end
+check('no missing keys', missing, 0)
+
 print(failures == 0 and '\nALL PASS' or ('\n' .. failures .. ' FAILURES'))
 os.exit(failures == 0 and 0 or 1)
