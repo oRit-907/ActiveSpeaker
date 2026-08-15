@@ -6,8 +6,6 @@ It has pulsing animation when speaking/talking.
 
 You can customize Icon and text to your liking using the config.lua file.
 
-Buy the latest version of [Active Speaker](https://store.ragecity.online/package/active-speaker) for only $4.99.
-
 |                             |                    |
 |-----------------------------|--------------------|
 | dependencies | [pma-voice](https://github.com/AvarianKnight/pma-voice)       |
