@@ -50,13 +50,25 @@ what the script did before.
 
 # Names
 
-`server.lua` looks the character name up from the ESX style `users` table
-through mysql-async and broadcasts the list to every client, which shows it as
-`John Doe - Speaking...`.
+`server.lua` resolves each players character name and broadcasts the list to
+every client, which shows it as `John Doe - Speaking...`. Set `ShowNames = false`
+in `client.lua` to skip names entirely.
 
-Servers without mysql-async, and players with no row in `users`, fall back to
-the name the player connected with, so the label still appears. Set
-`ShowNames = false` to skip names entirely.
+| Framework | Detected by | Name comes from |
+|-----------|-------------|-----------------|
+| QBCore | `qb-core` | `PlayerData.charinfo`, no query needed |
+| Qbox | `qbx_core` | `PlayerData.charinfo`, no query needed |
+| ESX | `es_extended` | `firstname` and `lastname` in the `users` table, through mysql-async |
+| None | nothing else running | the name the player connected with |
+
+Detection is automatic. `Config.Framework` at the top of `server.lua` forces a
+specific one, using `'qbcore'`, `'qbox'`, `'esx'` or `'none'`. Whichever is
+picked is printed to the server console on start.
+
+Anyone the framework has no character for, and any ESX server without
+mysql-async, falls back to the connection name, so the label still appears.
+Names are picked up as soon as a character loads, so nobody waits for the next
+refresh.
 
 # Stealth mode
 
