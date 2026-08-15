@@ -19,6 +19,25 @@ Buy the latest version of [Active Speaker](https://store.ragecity.online/package
 2. Add `ensure ActiveSpeaker` to your `server.cfg`, after `pma-voice`.
 3. Restart the server.
 
+# Version check
+
+On start the server compares the `version` in `fxmanifest.lua` against the copy
+on GitHub and prints one line to the console:
+
+```
+[ActiveSpeaker] up to date (1.0.0)
+[ActiveSpeaker] out of date. You are running 1.0.0, 1.0.2 is available.
+```
+
+Releasing a new version is just bumping `version` in `fxmanifest.lua` and
+pushing. No GitHub release or tag is needed, because `Config.VersionUrl` reads
+the manifest on the `main` branch directly.
+
+Versions are compared piece by piece rather than as text, so 1.0.10 is treated
+as newer than 1.0.9. Set `Config.VersionCheck = false` to stop the resource
+contacting GitHub at all. A failed check prints a warning and nothing else, it
+never blocks the resource from starting.
+
 # Configuration
 
 Every option lives in `config.lua`, which the client and the server share, so
@@ -42,6 +61,8 @@ it is the only file you need to edit:
 | `Icon` | Texture dictionary, texture and size of that icon. |
 | `EnableStealthMode` | Let other resources hide a player from the display. |
 | `Framework` | Where character names come from. See below. |
+| `VersionCheck` | Check GitHub for a newer version on start. |
+| `VersionUrl` | The file the check reads the latest version from. |
 
 The icon uses the built in `mpleaderboard` dictionary. Point `Icon.dict` and
 `Icon.texture` at your own streamed dictionary to use a custom one.

@@ -84,6 +84,18 @@ Config.NameRefreshInterval = 60000
 Config.Framework = 'auto'
 
 -- ============================================================================
+-- Version check
+-- ============================================================================
+
+-- Compare the version in fxmanifest.lua against the copy on GitHub when the
+-- resource starts, and print the result to the server console. Set to false to
+-- stop the resource contacting GitHub at all.
+Config.VersionCheck = true
+
+-- Read for a line like: version '1.0.0'
+Config.VersionUrl = 'https://raw.githubusercontent.com/oRit-907/ActiveSpeaker/main/fxmanifest.lua'
+
+-- ============================================================================
 -- Stealth
 -- ============================================================================
 
