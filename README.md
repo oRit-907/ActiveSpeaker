@@ -4,7 +4,7 @@ This will add a Visual display using pma-voice that shows above players head to 
 
 It has pulsing animation when speaking/talking.
 
-You can customize Icon and text to your liking using the client.lua file.
+You can customize Icon and text to your liking using the config.lua file.
 
 Buy the latest version of [Active Speaker](https://store.ragecity.online/package/active-speaker) for only $4.99.
 
@@ -21,7 +21,8 @@ Buy the latest version of [Active Speaker](https://store.ragecity.online/package
 
 # Configuration
 
-Everything lives in the `Config` table at the top of `client.lua`:
+Every option lives in `config.lua`, which the client and the server share, so
+it is the only file you need to edit:
 
 | Option | Description |
 |--------|-------------|
@@ -40,6 +41,7 @@ Everything lives in the `Config` table at the top of `client.lua`:
 | `ShowIcon` | Draw a small speaker icon above the label. |
 | `Icon` | Texture dictionary, texture and size of that icon. |
 | `EnableStealthMode` | Let other resources hide a player from the display. |
+| `Framework` | Where character names come from. See below. |
 
 The icon uses the built in `mpleaderboard` dictionary. Point `Icon.dict` and
 `Icon.texture` at your own streamed dictionary to use a custom one.
@@ -52,7 +54,7 @@ what the script did before.
 
 `server.lua` resolves each players character name and broadcasts the list to
 every client, which shows it as `John Doe - Speaking...`. Set `ShowNames = false`
-in `client.lua` to skip names entirely.
+to skip names entirely.
 
 | Framework | Detected by | Name comes from |
 |-----------|-------------|-----------------|
@@ -61,7 +63,7 @@ in `client.lua` to skip names entirely.
 | ESX | `es_extended` | `firstname` and `lastname` in the `users` table, through mysql-async |
 | None | nothing else running | the name the player connected with |
 
-Detection is automatic. `Config.Framework` at the top of `server.lua` forces a
+Detection is automatic. `Config.Framework` forces a
 specific one, using `'qbcore'`, `'qbox'`, `'esx'` or `'none'`. Whichever is
 picked is printed to the server console on start.
 

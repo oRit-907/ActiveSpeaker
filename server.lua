@@ -1,10 +1,3 @@
-local Config = {
-    -- 'auto', 'qbcore', 'qbox', 'esx' or 'none'. Auto picks whichever of the
-    -- frameworks below is running, and falls back to the name the player
-    -- connected with when none of them are.
-    Framework = 'auto'
-}
-
 local playerNames = {}
 local framework
 local QBCore
