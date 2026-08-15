@@ -34,28 +34,30 @@ local function checkVersion()
     local current = GetResourceMetadata(resource, 'version', 0)
 
     if not current then
-        print('^3[ActiveSpeaker] no version set in fxmanifest, skipping the update check^7')
+        ASWarn('no version set in fxmanifest, skipping the update check')
         return
     end
 
+    ASDebug(('checking %s for a newer version than %s'):format(Config.VersionUrl, current))
+
     PerformHttpRequest(Config.VersionUrl, function(status, body)
         if status ~= 200 or not body then
-            print(('^3[ActiveSpeaker] could not reach GitHub for the update check (status %s)^7'):format(status))
+            ASWarn(('could not reach GitHub for the update check (status %s)'):format(status))
             return
         end
 
         local latest = body:match("version%s+['\"]([%d%.]+)['\"]")
 
         if not latest then
-            print('^3[ActiveSpeaker] could not read the latest version from GitHub^7')
+            ASWarn('could not read the latest version from GitHub')
             return
         end
 
         if isOlder(current, latest) then
-            print(('^1[ActiveSpeaker] out of date. You are running %s, %s is available.^7'):format(current, latest))
-            print('^1[ActiveSpeaker] https://github.com/oRit-907/ActiveSpeaker^7')
+            ASError(('out of date. You are running %s, %s is available.'):format(current, latest))
+            ASError('https://github.com/oRit-907/ActiveSpeaker')
         else
-            print(('^2[ActiveSpeaker] up to date (%s)^7'):format(current))
+            ASPrint(('^2up to date (%s)^7'):format(current))
         end
     end, 'GET', '', { ['User-Agent'] = 'ActiveSpeaker' })
 end
