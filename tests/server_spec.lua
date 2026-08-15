@@ -3,20 +3,24 @@
 local ROOT = os.getenv('AS_ROOT') or '../'
 
 local sent, netEvents, handlers, threads, registered, resources, players, names
-local now, resourceStates
+local now, resourceStates, commands, consoled
 
 local function reset()
     sent, netEvents, handlers, threads = {}, {}, {}, {}
-    registered, resources = {}, {}
+    registered, resources, commands, consoled = {}, {}, {}, {}
     players, names = { 1, 2, 3 }, { [1] = 'Steam One', [2] = 'Steam Two', [3] = 'Steam Three' }
     now, resourceStates = 0, {}
 end
 
+local manifest = '2.2.0'
+
 function IsDuplicityVersion() return true end
 function GetCurrentResourceName() return 'ActiveSpeaker' end
+function GetResourceMetadata() return manifest end
 function GetGameTimer() return now end
 function GetResourceState(r) return resourceStates[r] or 'missing' end
-function GetPlayerName(src) return names[src] or ('unknown ' .. tostring(src)) end
+-- nil for an id nobody is using, the same as the real native.
+function GetPlayerName(src) return names[src] end
 function GetPlayerIdentifier(src) return 'license:' .. src end
 function GetPlayers()
     local out = {}
@@ -30,6 +34,9 @@ end
 
 function TriggerEvent() end
 function RegisterNetEvent(name, fn) netEvents[name] = fn end
+function RegisterCommand(name, fn, restricted)
+    commands[name] = { fn = fn, restricted = restricted }
+end
 function AddEventHandler(name, fn)
     handlers[name] = handlers[name] or {}
     table.insert(handlers[name], fn)
@@ -306,6 +313,155 @@ resources['qb-core'] = { GetCoreObject = function() error('core not ready') end 
 start()
 check('falls back instead of erroring', registered.getName(1), 'Steam One')
 
+-- ------------------------------------------------------- admin command
+local function runCommand(name, src, args)
+    local cmd = commands[name]
+    if not cmd then error('command ' .. name .. ' was never registered', 0) end
+
+    local realPrint = print
+    consoled = {}
+    print = function(msg) consoled[#consoled + 1] = msg end
+    cmd.fn(src, args or {})
+    print = realPrint
+
+    return consoled
+end
+
+local function chatTo(target)
+    local out = {}
+    for _, e in ipairs(sent) do
+        if e.event == 'chat:addMessage' and e.target == target then
+            out[#out + 1] = e.args[1].args[2]
+        end
+    end
+    return out
+end
+
+local function stealthEvents()
+    local out = {}
+    for _, e in ipairs(sent) do
+        if e.event == 'activespeaker:setStealth' then out[#out + 1] = e end
+    end
+    return out
+end
+
+print('\n== admin command ==')
+boot()
+start()
+check('registered', commands['asmute'] ~= nil, true)
+check('behind an ace permission', commands['asmute'].restricted, true)
+
+sent = {}
+runCommand('asmute', 0, { '2' })
+local hides = stealthEvents()
+check('one event', #hides, 1)
+check('to that player', hides[1].target, 2)
+check('hiding them', hides[1].args[1], true)
+check('tracked server side', registered.isPlayerStealthed(2), true)
+
+sent = {}
+runCommand('asmute', 0, { '2' })
+check('running it again shows them', stealthEvents()[1].args[1], false)
+check('no longer tracked', registered.isPlayerStealthed(2), false)
+
+sent = {}
+runCommand('asmute', 0, { '2', 'hide' })
+check('explicit hide', stealthEvents()[1].args[1], true)
+sent = {}
+runCommand('asmute', 0, { '2', 'hide' })
+check('explicit hide is not a toggle', stealthEvents()[1].args[1], true)
+sent = {}
+runCommand('asmute', 0, { '2', 'show' })
+check('explicit show', stealthEvents()[1].args[1], false)
+
+print('\n== admin command replies ==')
+boot()
+start()
+sent = {}
+local out = runCommand('asmute', 0, {})
+check('usage on the console with no id', out[1]:find('usage') ~= nil, true)
+
+sent = {}
+out = runCommand('asmute', 0, { '99' })
+check('rejects an id nobody is using', out[1]:find('no player is connected') ~= nil, true)
+check('and sends nothing', #stealthEvents(), 0)
+
+-- An admin in game cannot see the server console, so it answers in chat.
+sent = {}
+out = runCommand('asmute', 3, { '2' })
+check('nothing printed to the console', #out, 0)
+check('answered in chat instead', #chatTo(3), 1)
+check('naming the player', chatTo(3)[1]:find('Steam Two') ~= nil, true)
+
+print('\n== stealth is forgotten when the player leaves ==')
+boot()
+start()
+runCommand('asmute', 0, { '2' })
+check('hidden', registered.isPlayerStealthed(2), true)
+source = 2
+fire('playerDropped')
+check('cleared on drop', registered.isPlayerStealthed(2), false)
+
+-- ------------------------------------------------------- status command
+print('\n== status command ==')
+boot()
+resourceStates['qb-core'] = 'started'
+resources['qb-core'] = {
+    GetCoreObject = function()
+        return { Functions = { GetPlayer = function() return nil end } }
+    end
+}
+start()
+check('behind an ace permission', commands['asstatus'].restricted, true)
+
+out = runCommand('asstatus', 0)
+local text = table.concat(out, '\n')
+check('reports the version', text:find('2%.2%.0') ~= nil, true)
+check('reports the framework', text:find('qbcore') ~= nil, true)
+check('reports how many names resolved', text:find('3 resolved of 3 connected') ~= nil, true)
+check('warns that pma-voice is missing', text:find('pma%-voice is not started') ~= nil, true)
+
+boot()
+start()
+out = runCommand('asstatus', 0)
+check('warns when no framework was found', table.concat(out, '\n'):find('no framework was detected') ~= nil, true)
+
+-- ------------------------------------------------------- debug reply
+print('\n== debug reply ==')
+boot()
+resourceStates['es_extended'] = 'started'
+resources['es_extended'] = {
+    getSharedObject = function() return { GetPlayerFromId = function() return nil end } end
+}
+start()
+sent = {}
+source = 2
+netEvents['activespeaker:requestDebug']()
+local replies = eventsFor('activespeaker:debugReply')
+check('one reply', #replies, 1)
+check('to the client that asked', replies[1].target, 2)
+check('with the framework', replies[1].args[1].framework, 'esx')
+check('and the name count', replies[1].args[1].names, 3)
+
+sent = {}
+source = 2
+netEvents['activespeaker:requestDebug']()
+check('rate limited', #eventsFor('activespeaker:debugReply'), 0)
+
+now = now + 3001
+source = 2
+netEvents['activespeaker:requestDebug']()
+check('allowed again after the cooldown', #eventsFor('activespeaker:debugReply'), 1)
+
+print('\n== commands can be turned off ==')
+boot(function()
+    Config.AdminCommand = false
+    Config.StatusCommand = false
+end)
+start()
+check('no admin command', commands['asmute'], nil)
+check('no status command', commands['asstatus'], nil)
+
 -- ------------------------------------------------------- late framework
 print('\n== framework that starts after this resource ==')
 boot()
@@ -338,7 +494,7 @@ check('still none', registered.getName(1), 'Steam One')
 
 -- ------------------------------------------------------- version check
 print('\n== version check ==')
-local manifest, printed
+local printed
 
 local function versionCheck(current, remote)
     reset()
@@ -357,7 +513,6 @@ local function versionCheck(current, remote)
     return table.concat(printed, '\n')
 end
 
-function GetResourceMetadata() return manifest end
 function PerformHttpRequest(_, cb)
     cb(200, ("version '%s'"):format(_G.__remote))
 end

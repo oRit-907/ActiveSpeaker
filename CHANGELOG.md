@@ -1,5 +1,59 @@
 # Changelog
 
+## 2.2.0
+
+### Upgrading
+
+Replace every file. No option has been renamed or removed, so an existing
+`config.lua` keeps working, but the new ones are worth a look - especially
+`MinScale` and `MaxScale`, which fix the label being unreadable at range.
+
+### Fixed
+
+- The label was sized purely by distance, which worked out to roughly
+  `1.4 / distance`. Point blank it filled the screen, and at the default 20m
+  range it was a scale of 0.07, far too small to read - so most of `MaxDistance`
+  was drawing labels nobody could make out. `MinScale` and `MaxScale` hold it in
+  a readable band. Set `MinScale = 0` for the old behaviour.
+- The label flickered through an ordinary sentence, because voice detection
+  drops out in the pauses between words. `HoldTime` keeps it up across those
+  gaps.
+- Labels drew over the pause menu and through screen fades.
+
+### Added
+
+- `/activespeaker debug`, printing what the client can actually see to F8:
+  whether pma-voice is running, whether the icon loaded, how many names have
+  arrived, who is in range, and whether anyone is replicating the `radioActive`
+  and `proximity` states. It warns about the mismatches that cause "it does not
+  work", like `MatchVoiceRange` being on when nothing replicates proximity. The
+  server fills in the framework it picked and how many names it has resolved.
+- `/asmute <id> [hide|show]`, hiding a player from the display without touching
+  their client. Behind the ace permission `command.asmute`, and it works from
+  the server console.
+- `/asstatus`, the server side of the same diagnostics. Behind the ace
+  permission `command.asstatus`.
+- `FadeTime`, fading labels in and out instead of popping them.
+- `OccludedAlpha`. `RequireLineOfSight` used to hide a label completely behind
+  cover, which blinked as people walked behind pillars. It now dims to this
+  instead, eased rather than snapped. 0 restores the old hiding.
+- `RadioIcon`, a different icon on the radio, so radio and proximity are told
+  apart by shape and not only by colour.
+- `HideWhenDead` and `HideInPauseMenu`.
+- `ShowList` and `Config.List`, an optional panel in the corner listing everyone
+  you can currently hear, nearest first. It follows the same range, stealth,
+  hold and toggle rules as the labels.
+- `/activespeaker on` and `/activespeaker off`, for setting it either way rather
+  than toggling.
+- `isPlayerStealthed` export on the server.
+
+### Changed
+
+- `getTalkers` is now always ordered nearest first. It was only sorted when
+  `MaxLabels` was set, which did not match what the readme said.
+- `DrawText3DAnimated` takes an optional icon as its seventh argument. Existing
+  calls are unaffected.
+
 ## 2.1.0
 
 ### Upgrading
